@@ -49,18 +49,25 @@ Step-by-step from a fresh server with a built `wart-node` binary.
 - **Python 3.10+**
 - `git`, `systemctl`, `journalctl`
 - A built `wart-node` binary (e.g. under `/home/warthognode/core/build/src/node/wart-node`)
-- A dedicated Unix user for the node (e.g. `warthognode`)
+- A dedicated **non-login** Unix user for the node (e.g. `warthognode`)
+- An admin SSH account for server access (e.g. `root` or your VPS user) — **not** `warthognode`
 
 ### Step 1 — Node user and data directory
 
+Create a service account that runs `wart-node` but cannot SSH in (no shell, no password):
+
 ```bash
-# If the user does not exist yet:
-sudo useradd -m -s /bin/bash warthognode
+sudo groupadd -f warthognode
+sudo useradd -r -g warthognode -d /home/warthognode -s /bin/false warthognode
+sudo mkdir -p /home/warthognode
+sudo chown -R warthognode:warthognode /home/warthognode
 
 # First run of wart-node creates data under ~/.warthog/...
 # Default testnet path used by this project:
 #   /home/warthognode/.warthog/defi/testnet
 ```
+
+`warthognode` is for systemd only. Use your normal admin account for SSH and for the tunnel in Step 5.
 
 Ensure the `warthognode` user owns its home and can execute `wart-node`:
 
@@ -170,10 +177,11 @@ Open locally on the VPS: http://127.0.0.1:4789
 
 ### Step 5 — Remote access (SSH tunnel)
 
-The manager binds to localhost only. From your laptop:
+The manager binds to localhost only. From your laptop, SSH as your **admin** user (the account you use to manage the VPS — not `warthognode`):
 
 ```bash
-ssh -L 4789:127.0.0.1:4789 warthognode@your-vps
+ssh -L 4789:127.0.0.1:4789 root@your-vps
+# or: ssh -L 4789:127.0.0.1:4789 your-admin-user@your-vps
 ```
 
 Then open: http://127.0.0.1:4789
@@ -181,8 +189,10 @@ Then open: http://127.0.0.1:4789
 Keep tunnel alive without a shell:
 
 ```bash
-ssh -N -L 4789:127.0.0.1:4789 warthognode@your-vps
+ssh -N -L 4789:127.0.0.1:4789 root@your-vps
 ```
+
+The tunnel forwards port 4789 on your machine to the manager on the VPS. You do not need to log in as `warthognode`.
 
 ### Step 6 — Verify both services
 
@@ -275,6 +285,7 @@ Individual unban/ban updates the SQLite peers DB. The node's in-memory ban cache
 
 ## Security
 
+- Run `wart-node` as a non-login service user (`/bin/false`, no password) — SSH with your admin account instead
 - Do **not** expose port **4789** (manager) or **3000** (node RPC) to the public internet
 - Use SSH tunnels or a VPN for remote access
 - Node RPC is not authenticated — keep `--rpc` on `127.0.0.1` or behind a firewall
