@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Warthog Node Manager</title>
+  <link rel="icon" href="/static/logo.png" type="image/png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="brand">
+    <img src="/static/logo.png" alt="Warthog">
+    <div>
+      <h1>Node Manager</h1>
+      <span>Local control panel</span>
+    </div>
+  </div>
+  <nav class="nav">
+    <button data-page="dashboard" class="active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Dashboard
+    </button>
+    <button data-page="peers">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+      Peers
+    </button>
+    <button data-page="mempool">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      Mempool
+    </button>
+    <button data-page="logs">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+      Logs
+    </button>
+    <button data-page="service">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><circle cx="6" cy="6" r="1" fill="currentColor"/><circle cx="6" cy="18" r="1" fill="currentColor"/></svg>
+      Service
+    </button>
+    <button data-page="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      Settings
+    </button>
+  </nav>
+  <div class="sidebar-footer" id="sidebar-config">
+    Manager: 127.0.0.1:4789<br>
+    Node RPC: 127.0.0.1:3000
+  </div>
+</aside>
+
+<main class="main">
+
+  <!-- Dashboard -->
+  <section id="page-dashboard" class="page active">
+    <div class="page-header">
+      <h2>Dashboard</h2>
+      <div style="display:flex;align-items:center;gap:16px">
+        <span class="refresh-badge">Updated <span id="last-refresh">—</span></span>
+        <div id="status-pill" class="status-pill offline">
+          <span class="dot"></span>
+          <span class="label">Checking…</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="cards">
+      <div class="card"><div class="label">Block Height</div><div class="value" id="card-height">—</div></div>
+      <div class="card"><div class="label">Sync Status</div><div class="value" id="card-synced">—</div></div>
+      <div class="card"><div class="label">Hashrate</div><div class="value" id="card-hashrate">—</div></div>
+      <div class="card"><div class="label">Difficulty</div><div class="value" id="card-difficulty">—</div></div>
+      <div class="card"><div class="label">Peers</div><div class="value" id="card-peers">—</div></div>
+      <div class="card"><div class="label">Mempool</div><div class="value" id="card-mempool">—</div><div class="sub">pending txs</div></div>
+      <div class="card"><div class="label">Min Fee</div><div class="value" id="card-minfee" style="font-size:16px">—</div></div>
+      <div class="card"><div class="label">Uptime</div><div class="value" id="card-uptime" style="font-size:18px">—</div></div>
+      <div class="card"><div class="label">Version</div><div class="value" id="card-version" style="font-size:14px">—</div></div>
+      <div class="card"><div class="label">Chain DB</div><div class="value" id="card-dbsize" style="font-size:18px">—</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">Chain Head</div>
+      <div class="panel-body">
+        <div class="form-row"><label>Hash</label><span class="mono" id="head-hash">—</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Peers -->
+  <section id="page-peers" class="page">
+    <div class="page-header">
+      <h2>Peers</h2>
+      <button class="btn btn-danger" id="btn-unban">Unban All</button>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">Connected Peers</div>
+      <div class="panel-body" style="padding:0">
+        <table id="peers-table">
+          <thead><tr><th>IP</th><th>Port</th><th>Since</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">Banned Peers</div>
+      <div class="panel-body" style="padding:0">
+        <table id="banned-table">
+          <thead><tr><th>Address</th><th>Details</th><th>Action</th></tr></thead>
+          <tbody><tr><td colspan="3" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <p class="hint">Individual bans are written to the peers database. Connected peers may stay connected until they disconnect. Use <strong>Unban All</strong> to clear in-memory ban cache instantly.</p>
+  </section>
+
+  <!-- Mempool -->
+  <section id="page-mempool" class="page">
+    <div class="page-header"><h2>Mempool</h2></div>
+    <div class="panel">
+      <div class="panel-header">Pending Transactions</div>
+      <div class="panel-body" style="padding:0">
+        <table id="mempool-table">
+          <thead><tr><th>Hash</th><th>Type</th><th>From</th><th>Fee</th></tr></thead>
+          <tbody><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Logs -->
+  <section id="page-logs" class="page">
+    <div class="page-header">
+      <h2>Logs</h2>
+      <div class="btn-group">
+        <select id="log-source">
+          <option value="file">Log File</option>
+          <option value="journal">System Journal</option>
+        </select>
+        <select id="log-file-select"></select>
+        <select id="log-lines">
+          <option value="100">100 lines</option>
+          <option value="250">250 lines</option>
+          <option value="500">500 lines</option>
+          <option value="1000">1000 lines</option>
+        </select>
+        <button class="btn" id="btn-refresh-logs">Refresh</button>
+        <button class="btn btn-primary" id="btn-stream">Live Stream</button>
+      </div>
+    </div>
+    <div class="log-viewer" id="log-viewer">Select a log source and click Refresh.</div>
+  </section>
+
+  <!-- Service -->
+  <section id="page-service" class="page">
+    <div class="page-header"><h2>Service Control</h2></div>
+
+    <div class="cards" style="max-width:600px">
+      <div class="card"><div class="label">Service</div><div class="value" id="svc-name" style="font-size:14px">—</div></div>
+      <div class="card"><div class="label">State</div><div class="value" id="svc-state" style="font-size:18px">—</div></div>
+      <div class="card"><div class="label">PID</div><div class="value" id="svc-pid">—</div></div>
+      <div class="card"><div class="label">Started</div><div class="value" id="svc-started" style="font-size:13px">—</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">Current Command</div>
+      <div class="panel-body">
+        <pre class="command-preview mono" id="svc-current-command">Loading…</pre>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">Restart Options</div>
+      <div class="panel-body">
+        <p class="hint" style="margin-top:0">Toggle flags below, then restart. Changes are saved to a systemd drop-in override.</p>
+        <div class="flag-section">
+          <div class="flag-section-title">Boolean flags</div>
+          <div class="flag-grid" id="bool-flags"></div>
+        </div>
+        <div class="flag-section">
+          <div class="flag-section-title">Value flags</div>
+          <div class="value-flags" id="value-flags"></div>
+        </div>
+        <div class="flag-section">
+          <div class="flag-section-title">Preview</div>
+          <pre class="command-preview mono" id="svc-preview-command">—</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">Actions</div>
+      <div class="panel-body">
+        <div class="btn-group">
+          <button class="btn btn-primary" id="btn-start">Start</button>
+          <button class="btn btn-danger" id="btn-stop">Stop</button>
+          <button class="btn" id="btn-restart">Restart with Options</button>
+        </div>
+        <p class="hint">
+          Controls the <code id="svc-name-inline">warthog-api.service</code> systemd unit. Stop/restart will briefly interrupt node connectivity.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Settings -->
+  <section id="page-settings" class="page">
+    <div class="page-header"><h2>Settings</h2></div>
+
+    <div class="panel">
+      <div class="panel-header">Mempool Minimum Fee</div>
+      <div class="panel-body">
+        <div class="form-row">
+          <label>Current</label>
+          <span id="current-minfee">—</span>
+        </div>
+        <div class="form-row">
+          <label>New fee</label>
+          <input type="text" id="minfee-input" placeholder="0.00000001">
+          <button class="btn btn-primary" id="btn-update-minfee">Update</button>
+        </div>
+        <p class="hint">
+          Fee must be exactly representable in the node's 16-bit encoding. Invalid values will be rounded automatically.
+        </p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
