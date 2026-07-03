@@ -17,6 +17,89 @@ Browser  →  :4789  warthog-manager  →  :3000  warthog-api (wart-node)  →  
 
 The manager never replaces the node — it only talks to it over JSON-RPC and `systemctl`.
 
+## Quick start
+
+All `quickstart.sh` commands below run **on the VPS** (SSH in as your admin user). The exception is the SSH tunnel at the end — that runs on your laptop.
+
+### On the VPS — first-time install
+
+SSH into the server, clone the repo, and install both systemd services (non-interactive):
+
+```bash
+ssh your-admin-user@your-vps
+git clone https://github.com/warthog-network/node-manager-gui.git /home/warthognode/node-manager
+cd /home/warthognode/node-manager
+./quickstart.sh install
+```
+
+`install` requires **Linux + systemd** and **sudo**. It writes unit files under `/etc/systemd/system/`, enables both services, starts them, and prints where everything landed. Override paths before running if your layout differs:
+
+```bash
+WARTHOG_MANAGER_DIR=/home/warthognode/node-manager \
+WARTHOG_NODE_BIN=/home/warthognode/core/build/src/node/wart-node \
+WARTHOG_NODE_BUILD=/home/warthognode/core/build \
+WARTHOG_DATA=/home/warthognode/.warthog/defi/testnet \
+./quickstart.sh install
+```
+
+| What | Where after `install` |
+|------|------------------------|
+| Manager code | `WARTHOG_MANAGER_DIR` (default: repo checkout) |
+| Python venv | `$WARTHOG_MANAGER_DIR/.venv` |
+| Node unit | `/etc/systemd/system/warthog-api.service` |
+| Manager unit | `/etc/systemd/system/warthog-manager.service` |
+| Node binary | `WARTHOG_NODE_BIN` (default: `…/core/build/src/node/wart-node`) |
+| Node data | `WARTHOG_DATA` (default: `~/.warthog/defi/testnet` under node user) |
+| Manager UI | http://127.0.0.1:4789 (localhost only) |
+| Node RPC | http://127.0.0.1:3000 (localhost only) |
+
+Full manual setup is in [Full setup (VPS)](#full-setup-vps) below.
+
+### On the VPS — dev / foreground (optional)
+
+If you already have `wart-node` running and want to try the UI without systemd:
+
+```bash
+cd /home/warthognode/node-manager
+./quickstart.sh
+```
+
+Open http://127.0.0.1:4789 on the VPS — the UI talks to the node at `http://127.0.0.1:3000` by default.
+
+### On the VPS — verify services
+
+```bash
+cd /home/warthognode/node-manager
+./quickstart.sh check
+```
+
+### On your laptop — remote access
+
+The manager listens on localhost only. From your laptop:
+
+```bash
+ssh -L 4789:127.0.0.1:4789 your-admin-user@your-vps
+```
+
+Then open http://127.0.0.1:4789 locally.
+
+| Command | Where to run | What it does |
+|---------|--------------|--------------|
+| `./quickstart.sh install` | **VPS** | Install, enable, and start systemd units (non-interactive) |
+| `./quickstart.sh check` | **VPS** | Verify node RPC and manager HTTP |
+| `./quickstart.sh` | **VPS** | Create venv (if needed) and run the UI in the foreground |
+| `ssh -L 4789:…` | **Laptop** | Tunnel the manager UI to your machine |
+
+Override paths and ports inline:
+
+```bash
+WARTHOG_RPC=http://127.0.0.1:3000 \
+WARTHOG_DATA=/home/warthognode/.warthog/defi/testnet \
+./quickstart.sh
+```
+
+`./run.sh` is equivalent to `./quickstart.sh` for foreground mode.
+
 ## Repository
 
 ```text
@@ -133,10 +216,10 @@ sudo -u warthognode git clone https://github.com/warthog-network/node-manager-gu
 cd /home/warthognode/node-manager
 ```
 
-Create the Python venv (also done automatically by `run.sh` on first run):
+Create the Python venv (also done automatically by `./quickstart.sh` on first run):
 
 ```bash
-./run.sh
+./quickstart.sh
 # Ctrl+C after confirming it starts — we'll use systemd next
 ```
 
@@ -202,27 +285,6 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:4789/
 ```
 
 Expected: both `active`, HTTP `200`.
-
----
-
-## Quick start (development / foreground)
-
-Without systemd — useful for local testing:
-
-```bash
-cd node-manager
-./run.sh
-```
-
-Then open: http://127.0.0.1:4789
-
-Override env vars inline:
-
-```bash
-WARTHOG_RPC=http://127.0.0.1:3000 \
-WARTHOG_DATA=/home/warthognode/.warthog/defi/testnet \
-./run.sh
-```
 
 ---
 
