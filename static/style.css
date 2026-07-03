@@ -153,6 +153,7 @@ body {
   font-weight: 600;
 }
 .panel-body { padding: 16px 18px; }
+.chain-info-hint { margin: 4px 0 0; font-size: 12px; }
 
 /* Buttons */
 .btn {
@@ -201,6 +202,11 @@ tr:hover td { background: var(--bg-hover); }
 .log-viewer .line-info { color: var(--blue); }
 .log-viewer .line-warn { color: var(--accent); }
 .log-viewer .line-error { color: var(--red); }
+.log-viewer .line-sync { color: var(--green); }
+.log-viewer-compact {
+  max-height: 240px;
+  margin-top: 0;
+}
 
 /* Form */
 .form-row {
@@ -209,7 +215,8 @@ tr:hover td { background: var(--bg-hover); }
   gap: 12px;
   margin-bottom: 14px;
 }
-.form-row label { font-size: 13px; color: var(--text-dim); min-width: 100px; }
+.form-row label { font-size: 13px; color: var(--text-dim); min-width: 120px; flex-shrink: 0; }
+.form-row > span, .form-row > .mono { flex: 1; min-width: 0; word-break: break-all; }
 input[type="text"], input[type="number"], select {
   background: var(--bg);
   border: 1px solid var(--border);

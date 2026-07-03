@@ -78,9 +78,22 @@
     </div>
 
     <div class="panel">
-      <div class="panel-header">Chain Head</div>
-      <div class="panel-body">
-        <div class="form-row"><label>Hash</label><span class="mono" id="head-hash">—</span></div>
+      <div class="panel-header">
+        Chain Info
+        <button class="btn btn-sm" id="btn-chain-info-toggle" type="button" title="Show full block header, PoW, and transaction details">Show advanced</button>
+      </div>
+      <div class="panel-body" id="chain-info-details">
+        <div class="empty">Loading chain info…</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        Node Console
+        <span class="refresh-badge">sync · peers · blocks</span>
+      </div>
+      <div class="panel-body" style="padding-top:0">
+        <div class="log-viewer log-viewer-compact" id="dash-console">Waiting for node output…</div>
       </div>
     </div>
   </section>
@@ -135,10 +148,10 @@
       <h2>Logs</h2>
       <div class="btn-group">
         <select id="log-source">
-          <option value="file">Log File</option>
-          <option value="journal">System Journal</option>
+          <option value="console" selected>Console Output</option>
+          <option value="file">Log Files (detailed)</option>
         </select>
-        <select id="log-file-select"></select>
+        <select id="log-file-select" style="display:none"></select>
         <select id="log-lines">
           <option value="100">100 lines</option>
           <option value="250">250 lines</option>
@@ -149,7 +162,11 @@
         <button class="btn btn-primary" id="btn-stream">Live Stream</button>
       </div>
     </div>
-    <div class="log-viewer" id="log-viewer">Select a log source and click Refresh.</div>
+    <p class="hint" style="margin-top:0">
+      <strong>Console Output</strong> shows the same sync, peer, and block messages you see in a terminal.
+      <strong>Log Files</strong> are verbose debug logs (connections, P2P messages, timing, etc.).
+    </p>
+    <div class="log-viewer" id="log-viewer">Loading console output…</div>
   </section>
 
   <!-- Service -->

@@ -290,9 +290,21 @@ async def dashboard():
         peer_count = len(peers_conn.get("data", [])) if peers_conn.get("code") == 0 else 0
         mempool_count = len(mempool.get("data", [])) if mempool.get("code") == 0 else 0
 
+        head_data = head.get("data")
+        block_data = None
+        height = (head_data or {}).get("chainHead", {}).get("height")
+        if height is not None:
+            try:
+                block = node_request(f"/chain/block/{int(height)}")
+                if block.get("code") == 0:
+                    block_data = block.get("data")
+            except HTTPException:
+                pass
+
         data["node"] = {
             "info": info.get("data"),
-            "head": head.get("data"),
+            "head": head_data,
+            "block": block_data,
             "peer_count": peer_count,
             "mempool_count": mempool_count,
             "minfee": minfee.get("data"),
@@ -396,6 +408,15 @@ async def tail_log(
         raise HTTPException(status_code=504, detail="tail timed out")
 
 
+JOURNAL_LINE_RE = re.compile(r"wart-node\[\d+\]:\s*(.+)$")
+
+
+def strip_journal_line(line: str) -> str:
+    """Return the wart-node message without the systemd journal prefix."""
+    m = JOURNAL_LINE_RE.search(line)
+    return m.group(1) if m else line
+
+
 @app.get("/api/logs/journal")
 async def journal_log(lines: int = Query(100, ge=1, le=2000)):
     try:
@@ -405,9 +426,34 @@ async def journal_log(lines: int = Query(100, ge=1, le=2000)):
             text=True,
             timeout=15,
         )
-        return {"service": SERVICE_NAME, "lines": result.stdout.splitlines()}
+        raw_lines = result.stdout.splitlines()
+        return {
+            "service": SERVICE_NAME,
+            "lines": [strip_journal_line(line) for line in raw_lines],
+        }
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="journalctl timed out")
+
+
+@app.get("/api/logs/journal/stream")
+async def stream_journal():
+    def generate():
+        proc = subprocess.Popen(
+            ["journalctl", "-u", SERVICE_NAME, "-f", "-n", "50", "--no-pager", "-o", "short-iso"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        try:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                cleaned = strip_journal_line(line.rstrip())
+                if cleaned:
+                    yield f"data: {json.dumps({'line': cleaned})}\n\n"
+        finally:
+            proc.terminate()
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @app.get("/api/logs/stream")

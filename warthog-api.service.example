@@ -1,0 +1,63 @@
+# Warthog node (wart-node) — systemd unit example
+#
+# Install:
+#   sudo cp warthog-api.service.example /etc/systemd/system/warthog-api.service
+#   sudo nano /etc/systemd/system/warthog-api.service   # adjust paths/flags
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now warthog-api.service
+#
+# This is the blockchain node itself. The Node Manager GUI (warthog-manager.service)
+# talks to it over JSON-RPC (--rpc below, default 127.0.0.1:3000).
+
+[Unit]
+Description=Warthog Node (DeFi)
+Documentation=https://github.com/warthog-network
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# Unix user that owns the node data directory (~/.warthog/...).
+User=warthognode
+Group=warthognode
+
+# Directory containing the built wart-node binary.
+WorkingDirectory=/home/warthognode/core/build/src/node
+
+# Required so wart-node finds libwarthog*.so from your build tree.
+Environment=LD_LIBRARY_PATH=/home/warthognode/core/build
+
+# --- ExecStart flags (edit for your deployment) ---
+#
+#   --rpc=127.0.0.1:3000          JSON-RPC for local tools + Node Manager (keep on localhost)
+#   --stratum=127.0.0.1:3457      Solo mining stratum
+#   --minfee=0.00000001           Mempool minimum fee
+#   --testnet                     Testnet chain (omit on mainnet)
+#   --enable-public               Also listen on 0.0.0.0:3001 for public RPC
+#   --enable-trades-historydb     Persist trade history
+#
+# Optional flags (see Node Manager → Service page, or wart-node --help):
+#   --bind=0.0.0.0:9286           P2P listen address
+#   --connect=1.2.3.4:9286        Seed peers (comma-separated)
+#   --session=/path/to/data       Override data directory
+#   --debug                       Verbose logging
+#
+ExecStart=/home/warthognode/core/build/src/node/wart-node \
+  --minfee=0.00000001 \
+  --stratum=127.0.0.1:3457 \
+  --rpc=127.0.0.1:3000 \
+  --enable-public \
+  --testnet \
+  --enable-trades-historydb
+
+Restart=always
+RestartSec=5
+
+# Peers + open files; raise if you see "too many open files" in logs.
+LimitNOFILE=65535
+
+# Logs: journalctl -u warthog-api.service -f
+
+[Install]
+WantedBy=multi-user.target

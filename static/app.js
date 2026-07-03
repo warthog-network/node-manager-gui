@@ -2,7 +2,28 @@ const REFRESH_MS = 5000;
 let currentPage = 'dashboard';
 let refreshTimer = null;
 let logStream = null;
+let dashConsoleStream = null;
 let serviceFlags = null;
+const DASH_CONSOLE_MAX_LINES = 80;
+let chainInfoAdvanced = localStorage.getItem('chainInfoAdvanced') === 'true';
+let lastChainHead = null;
+let lastChainBlock = null;
+
+const BASIC_CHAIN_LABELS = new Set([
+  'Synced',
+  'Chain head · Height',
+  'Chain head · Hashrate',
+  'Chain head · Difficulty',
+  'Chain head · Hash',
+  'Chain head · Pin Height',
+  'Chain head · Is Janushash',
+  'Block · Confirmations',
+  'Header · Time',
+  'Header · Prev Hash',
+  'Header · Merkleroot',
+  'Block Reward',
+  'Body · Transactions',
+]);
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -53,12 +74,204 @@ function shortHash(h) {
   return h.slice(0, 8) + '…' + h.slice(-8);
 }
 
+function humanChainLabel(key) {
+  return key
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function isMonoChainKey(key) {
+  return /hash|hex|raw|nonce|target|version|root|address/i.test(key) && key !== 'hashrate';
+}
+
+function formatChainValue(key, value) {
+  if (value == null) return '—';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (key === 'hashrate') return fmtHashrate(value);
+  if (typeof value === 'number') {
+    if (Number.isInteger(value) || Math.abs(value) >= 1000) return fmtNum(value);
+    return String(value);
+  }
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.length === 0 ? 'None' : String(value.length);
+  if (typeof value === 'object') {
+    if (value.UTC) return value.UTC;
+    if (value.str != null) return value.str;
+    return null;
+  }
+  return String(value);
+}
+
+function isBasicChainLabel(label) {
+  return BASIC_CHAIN_LABELS.has(label);
+}
+
+function summarizeBodyTxs(body) {
+  if (!body) return 'None';
+  const types = [
+    ['wartTransfer', 'transfer'],
+    ['tokenTransfer', 'token'],
+    ['limitSwap', 'swap'],
+    ['match', 'match'],
+    ['liquidityDeposit', 'deposit'],
+    ['liquidityWithdrawal', 'withdrawal'],
+    ['assetCreation', 'asset'],
+    ['cancelation', 'cancel'],
+  ];
+  const parts = [];
+  for (const [key, name] of types) {
+    const count = body[key]?.length ?? 0;
+    if (count > 0) parts.push(`${count} ${name}${count === 1 ? '' : 's'}`);
+  }
+  return parts.length ? parts.join(', ') : 'None';
+}
+
+function collectChainRows(obj, prefix, rows) {
+  if (!obj || typeof obj !== 'object') return;
+  for (const [key, value] of Object.entries(obj)) {
+    const label = prefix ? `${prefix} · ${humanChainLabel(key)}` : humanChainLabel(key);
+    const formatted = formatChainValue(key, value);
+    if (formatted !== null) {
+      rows.push({
+        label,
+        value: formatted,
+        mono: isMonoChainKey(key),
+        basic: isBasicChainLabel(label),
+      });
+      continue;
+    }
+    if (Array.isArray(value)) {
+      rows.push({
+        label,
+        value: value.length === 0 ? 'None' : String(value.length),
+        mono: false,
+        basic: isBasicChainLabel(label),
+      });
+      continue;
+    }
+    collectChainRows(value, label, rows);
+  }
+}
+
+function displayChainValue(row, advanced) {
+  if (advanced || !row.mono) return row.value;
+  if (row.value === '—' || row.value === 'None') return row.value;
+  if (/^0x[0-9a-f]+$/i.test(row.value) && row.value.length > 20) return shortHash(row.value);
+  if (/^[0-9a-f]+$/i.test(row.value) && row.value.length >= 16) return shortHash(row.value);
+  return row.value;
+}
+
+function updateChainInfoToggle() {
+  const btn = $('#btn-chain-info-toggle');
+  if (!btn) return;
+  const hidden = btn.dataset.hidden;
+  btn.textContent = chainInfoAdvanced
+    ? 'Show basic'
+    : hidden && hidden !== '0'
+      ? `Show advanced (${hidden})`
+      : 'Show advanced';
+  btn.classList.toggle('btn-primary', !chainInfoAdvanced);
+}
+
+function renderChainInfo(head, block) {
+  const el = $('#chain-info-details');
+  if (!el) return;
+
+  if (!head && !block) {
+    el.innerHTML = '<div class="empty">No chain data</div>';
+    updateChainInfoToggle();
+    return;
+  }
+
+  const rows = [];
+  if (head?.synced != null) {
+    rows.push({
+      label: 'Synced',
+      value: head.synced ? 'Yes' : 'No',
+      mono: false,
+      basic: true,
+      color: head.synced ? 'var(--green)' : 'var(--accent)',
+    });
+  }
+  if (head?.chainHead) collectChainRows(head.chainHead, 'Chain head', rows);
+
+  if (block) {
+    const { header, body, ...top } = block;
+    collectChainRows(top, 'Block', rows);
+    if (header) collectChainRows(header, 'Header', rows);
+
+    const rewardAmt = body?.reward?.transaction?.data?.amount?.str;
+    if (rewardAmt) {
+      rows.push({ label: 'Block Reward', value: rewardAmt, mono: false, basic: true });
+    }
+
+    if (body) {
+      rows.push({
+        label: 'Body · Transactions',
+        value: summarizeBodyTxs(body),
+        mono: false,
+        basic: true,
+      });
+      for (const [key, value] of Object.entries(body)) {
+        if (key === 'reward') continue;
+        const label = `Body · ${humanChainLabel(key)}`;
+        if (Array.isArray(value)) {
+          rows.push({ label, value: value.length === 0 ? 'None' : String(value.length), mono: false, basic: false });
+        } else {
+          collectChainRows(value, label, rows);
+        }
+      }
+    }
+  }
+
+  const visible = chainInfoAdvanced ? rows : rows.filter((row) => row.basic);
+  const hiddenCount = rows.length - visible.length;
+
+  const toggleBtn = $('#btn-chain-info-toggle');
+  if (toggleBtn) toggleBtn.dataset.hidden = String(hiddenCount);
+
+  el.innerHTML = visible.map((row) => {
+    const cls = row.mono ? 'mono' : '';
+    const style = row.color ? ` style="color:${row.color}"` : '';
+    const display = displayChainValue(row, chainInfoAdvanced);
+    const title = row.mono && display !== row.value ? ` title="${escAttr(row.value)}"` : '';
+    return `<div class="form-row"><label>${escHtml(row.label)}</label><span class="${cls}"${style}${title}>${escHtml(display)}</span></div>`;
+  }).join('');
+
+  if (!chainInfoAdvanced && hiddenCount > 0) {
+    el.innerHTML += `<p class="hint chain-info-hint">${fmtNum(hiddenCount)} more field${hiddenCount === 1 ? '' : 's'} in advanced view (PoW, raw header, worksum, reward tx details…)</p>`;
+  }
+
+  updateChainInfoToggle();
+}
+
+function toggleChainInfoView() {
+  chainInfoAdvanced = !chainInfoAdvanced;
+  localStorage.setItem('chainInfoAdvanced', chainInfoAdvanced ? 'true' : 'false');
+  renderChainInfo(lastChainHead, lastChainBlock);
+}
+
 function colorizeLog(line) {
   let cls = '';
   if (/\[error\]|error|closed:/i.test(line)) cls = 'line-error';
+  else if (/syncing|synced in|connected to \d+ peers/i.test(line)) cls = 'line-sync';
   else if (/\[warn\]|warning/i.test(line)) cls = 'line-warn';
   else if (/\[info\]/i.test(line)) cls = 'line-info';
   return `<span class="${cls}">${escHtml(line)}</span>`;
+}
+
+function appendLogLine(viewer, line, maxLines = 0) {
+  viewer.innerHTML += colorizeLog(line) + '\n';
+  if (maxLines > 0) {
+    const parts = viewer.innerHTML.split('\n').filter(Boolean);
+    if (parts.length > maxLines) {
+      viewer.innerHTML = parts.slice(-maxLines).join('\n') + '\n';
+    }
+  }
+  if (viewer.scrollHeight - viewer.scrollTop < 200) {
+    viewer.scrollTop = viewer.scrollHeight;
+  }
 }
 
 function escHtml(s) {
@@ -72,11 +285,13 @@ function escAttr(s) {
 // ── Navigation ────────────────────────────────────────────────────────────────
 
 function navigate(page) {
+  if (currentPage === 'dashboard' && page !== 'dashboard') stopDashConsole();
   currentPage = page;
   $$('.page').forEach(p => p.classList.remove('active'));
   $(`#page-${page}`)?.classList.add('active');
   $$('.nav button').forEach(b => b.classList.toggle('active', b.dataset.page === page));
   loadPage(page);
+  if (page === 'dashboard') startDashConsole();
 }
 
 function loadPage(page) {
@@ -124,10 +339,9 @@ async function loadDashboard() {
     $('#card-version').textContent = info?.version?.name || '—';
     $('#card-dbsize').textContent = fmtBytes(info?.dbSize);
 
-    const hashEl = $('#head-hash');
-    if (hashEl && head?.chainHead?.hash) {
-      hashEl.textContent = head.chainHead.hash;
-    }
+    lastChainHead = head;
+    lastChainBlock = node?.block;
+    renderChainInfo(head, node?.block);
 
     $('#last-refresh').textContent = new Date().toLocaleTimeString();
   } catch (e) {
@@ -270,14 +484,21 @@ async function loadLogFiles() {
   ).join('');
 }
 
+function getLogStreamUrl() {
+  const source = $('#log-source').value;
+  if (source === 'console') return '/api/logs/journal/stream';
+  const file = $('#log-file-select').value;
+  return `/api/logs/stream?file=${encodeURIComponent(file)}`;
+}
+
 async function loadLogs() {
-  await loadLogFiles();
+  if ($('#log-source').value === 'file') await loadLogFiles();
   const source = $('#log-source').value;
   const lines = $('#log-lines').value || 100;
 
   try {
     let logLines;
-    if (source === 'journal') {
+    if (source === 'console') {
       const res = await api(`/api/logs/journal?lines=${lines}`);
       logLines = res.lines;
     } else {
@@ -301,17 +522,13 @@ function toggleLogStream() {
     return;
   }
 
-  const file = $('#log-file-select').value;
-  logStream = new EventSource(`/api/logs/stream?file=${encodeURIComponent(file)}`);
+  logStream = new EventSource(getLogStreamUrl());
   const viewer = $('#log-viewer');
   viewer.innerHTML = '';
 
   logStream.onmessage = (ev) => {
     const { line } = JSON.parse(ev.data);
-    viewer.innerHTML += colorizeLog(line) + '\n';
-    if (viewer.scrollHeight - viewer.scrollTop < 200) {
-      viewer.scrollTop = viewer.scrollHeight;
-    }
+    appendLogLine(viewer, line);
   };
   logStream.onerror = () => {
     logStream.close();
@@ -320,6 +537,33 @@ function toggleLogStream() {
     toast('Log stream disconnected', 'error');
   };
   $('#btn-stream').textContent = 'Stop Stream';
+}
+
+function startDashConsole() {
+  stopDashConsole();
+  const viewer = $('#dash-console');
+  if (!viewer) return;
+  viewer.textContent = 'Connecting to node console…';
+
+  dashConsoleStream = new EventSource('/api/logs/journal/stream');
+  dashConsoleStream.onmessage = (ev) => {
+    const { line } = JSON.parse(ev.data);
+    if (viewer.textContent === 'Connecting to node console…' || viewer.textContent === 'Waiting for node output…') {
+      viewer.innerHTML = '';
+    }
+    appendLogLine(viewer, line, DASH_CONSOLE_MAX_LINES);
+  };
+  dashConsoleStream.onerror = () => {
+    stopDashConsole();
+    viewer.textContent = 'Console stream unavailable — is the node service running?';
+  };
+}
+
+function stopDashConsole() {
+  if (dashConsoleStream) {
+    dashConsoleStream.close();
+    dashConsoleStream = null;
+  }
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -477,10 +721,13 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#btn-refresh-logs')?.addEventListener('click', loadLogs);
   $('#btn-stream')?.addEventListener('click', toggleLogStream);
   $('#btn-update-minfee')?.addEventListener('click', updateMinfee);
+  $('#btn-chain-info-toggle')?.addEventListener('click', toggleChainInfoView);
+  updateChainInfoToggle();
   $('#log-source')?.addEventListener('change', () => {
-    const isJournal = $('#log-source').value === 'journal';
-    $('#log-file-select').style.display = isJournal ? 'none' : '';
-    $('#btn-stream').style.display = isJournal ? 'none' : '';
+    const isFile = $('#log-source').value === 'file';
+    $('#log-file-select').style.display = isFile ? '' : 'none';
+    if (logStream) toggleLogStream();
+    loadLogs();
   });
 
   loadConfig();

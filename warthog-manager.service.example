@@ -1,0 +1,38 @@
+# Warthog Node Manager — systemd unit example
+#
+# Install:
+#   sudo cp warthog-manager.service.example /etc/systemd/system/warthog-manager.service
+#   sudo nano /etc/systemd/system/warthog-manager.service   # adjust paths if needed
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now warthog-manager.service
+#
+# This is the web GUI (port 4789). It controls warthog-api.service via systemctl
+# and reads node status over WARTHOG_RPC (default http://127.0.0.1:3000).
+#
+# Runs as root so it can manage systemd units and read journal/logs.
+
+[Unit]
+Description=Warthog Node Manager GUI
+Documentation=https://github.com/warthog-network/node-manager-gui
+After=network-online.target warthog-api.service
+Wants=warthog-api.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/warthognode/node-manager
+ExecStart=/home/warthognode/node-manager/run.sh
+Restart=on-failure
+RestartSec=5
+
+# Must match your wart-node --rpc address and data layout.
+Environment=WARTHOG_RPC=http://127.0.0.1:3000
+Environment=WARTHOG_SERVICE=warthog-api.service
+Environment=WARTHOG_DATA=/home/warthognode/.warthog/defi/testnet
+Environment=WARTHOG_MANAGER_PORT=4789
+
+# Logs: journalctl -u warthog-manager.service -f
+# UI:    http://127.0.0.1:4789  (SSH tunnel for remote access)
+
+[Install]
+WantedBy=multi-user.target
